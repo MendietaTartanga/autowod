@@ -31,10 +31,6 @@ function normalizeText(value: string): string {
     .trim();
 }
 
-/**
- * Permite configurar varias reservas en un mismo día.
- * Formato: HH:mm|Actividad;HH:mm|Actividad
- */
 export function parsePreferenceValues(
   value: string | null
 ): ParsedPreference[] {
@@ -67,8 +63,11 @@ export async function goToReservations(page: Page): Promise<void> {
   const currentDomain = new URL(page.url()).origin;
 
   await page.goto(
-    `${currentDomain}/athlete/reservas.aspx?t=${todayInSeconds}`
+    `${currentDomain}/athlete/reservas.aspx?t=${todayInSeconds}`,
+    { waitUntil: 'networkidle2' }
   );
+
+  await page.waitForSelector('.rowClase', { timeout: 30000 });
 }
 
 export async function getReservationState(
@@ -88,9 +87,10 @@ export function getReservationKey(time: string): string {
 }
 
 export async function goToNextDay(page: Page): Promise<void> {
-  await page.waitForSelector('a.next');
+  await page.waitForSelector('a.next', { visible: true });
   await page.click('a.next');
-  await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
+
+  await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
 }
 
 function getTimestampFromUrl(page: Page): number {
@@ -133,8 +133,7 @@ export function getISODateFromUrl(page: Page): string {
 }
 
 /**
- * Busca una clase por hora y nombre.
- * Nunca selecciona otra clase como alternativa.
+ * Busca exclusivamente la actividad configurada.
  */
 async function findReservationRow(
   page: Page,
@@ -171,8 +170,7 @@ async function findReservationRow(
 }
 
 /**
- * Busca exclusivamente los botones de acción.
- * Ignora el botón "Wod", que solo muestra los ejercicios.
+ * Solo devuelve botones de acción reconocidos.
  */
 async function findActionButton(
   row: ElementHandle<Element>
@@ -191,6 +189,26 @@ async function findActionButton(
   }
 
   return null;
+}
+
+/**
+ * Después de solicitar una reserva, comprueba si el botón
+ * ha cambiado a Borrar, que indica que ya está inscrita.
+ */
+async function verifyReservation(
+  page: Page,
+  time: string,
+  className: string
+): Promise<ButtonText | null> {
+  await page.waitForNetworkIdle({ timeout: 10000 }).catch(() => {});
+
+  const row = await findReservationRow(page, time, className);
+
+  if (!row) return null;
+
+  const action = await findActionButton(row);
+
+  return action?.state ?? null;
 }
 
 export async function makeReservation(
@@ -223,7 +241,7 @@ export async function makeReservation(
   if (!action) {
     return {
       success: false,
-      message: `No se ha encontrado un botón de reserva válido para ${className} a las ${time}.`,
+      message: `No se ha encontrado un botón válido para ${className} a las ${time}.`,
       weekDay,
       date,
       time,
@@ -244,19 +262,45 @@ export async function makeReservation(
   };
 
   switch (action.state) {
-    case 'Entrenar':
+    case 'Entrenar': {
       await action.button.click();
-      await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
-      result.success = true;
-      result.message = `Reserva solicitada: ${className} a las ${time}.`;
-      break;
 
-    case 'Avisar':
-      await action.button.click();
-      await page.waitForNetworkIdle({ timeout: 5000 }).catch(() => {});
-      result.success = true;
-      result.message = `Lista de espera solicitada: ${className} a las ${time}.`;
+      const newState = await verifyReservation(
+        page,
+        time,
+        className
+      );
+
+      if (newState === 'Borrar') {
+        result.success = true;
+        result.message = `Inscripción confirmada: ${className} a las ${time}.`;
+        result.state = 'Borrar';
+      } else {
+        result.message = `No se ha podido confirmar la inscripción de ${className} a las ${time}.`;
+      }
+
       break;
+    }
+
+    case 'Avisar': {
+      await action.button.click();
+
+      const newState = await verifyReservation(
+        page,
+        time,
+        className
+      );
+
+      if (newState === 'Borrar') {
+        result.success = true;
+        result.message = `Inscripción confirmada: ${className} a las ${time}.`;
+        result.state = 'Borrar';
+      } else {
+        result.message = `Se ha solicitado la lista de espera de ${className} a las ${time}, pero no se ha podido verificar.`;
+      }
+
+      break;
+    }
 
     case 'Borrar':
       result.success = true;
@@ -264,7 +308,7 @@ export async function makeReservation(
       break;
 
     case 'Cambiar':
-      result.message = `Ya tienes otra reserva en ese horario. No se ha cambiado.`;
+      result.message = 'Ya tienes otra reserva en ese horario. No se ha cambiado.';
       break;
 
     case 'Finalizada':
@@ -283,17 +327,9 @@ function writeJobSummary(
   if (!summaryFile) return;
 
   const rows = results.map(result => {
-    const status = result.state === 'Entrenar' && result.success
-      ? 'Reserva solicitada'
-      : result.state === 'Avisar' && result.success
-        ? 'Lista de espera'
-        : result.state === 'Borrar'
-          ? 'Ya reservada'
-          : result.state === 'Cambiar'
-            ? 'Otra reserva en ese horario'
-            : result.state === 'Finalizada'
-              ? 'Clase finalizada'
-              : 'Pendiente / no encontrada';
+    const status = result.success
+      ? result.message
+      : `Pendiente: ${result.message}`;
 
     return `| ${result.weekDay} | ${result.date ?? '—'} | ${result.time ?? '—'} | ${result.className ?? '—'} | ${status} |`;
   });
