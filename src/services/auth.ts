@@ -114,6 +114,17 @@ export async function login(
     throw new Error('WodBuster ha solicitado una verificación CAPTCHA. El proceso se detiene y requiere intervención manual.');
   }
 
+  console.log('Resultado del envío del formulario (sin credenciales):', JSON.stringify({
+    url: diagnostics.url,
+    title: diagnostics.title,
+    loginFormVisible: diagnostics.loginFormVisible,
+    emailFilled: diagnostics.emailFilled,
+    passwordFilled: diagnostics.passwordFilled,
+    pageText: diagnostics.pageText,
+    captcha: diagnostics.captcha,
+    mensajes: diagnostics.messages,
+  }));
+
   if (diagnostics.loginFormVisible) {
     console.log('Diagnóstico de acceso (sin credenciales):', JSON.stringify({
       url: diagnostics.url,
