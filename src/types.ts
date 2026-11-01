@@ -14,7 +14,12 @@ export type WeekDay =
   | 'saturday'
   | 'sunday';
 
-export type ReservationPreferences = Record<WeekDay, string[]>;
+export interface ReservationPreference {
+  time: string;
+  className: string;
+}
+
+export type ReservationPreferences = Record<WeekDay, string | null>;
 
 export type TerminalBookingStatus =
   | 'booked'
@@ -30,5 +35,7 @@ export interface ReservationResult {
   weekDay: string;
   date?: string;
   time?: string;
+  className?: string;
+  preferenceKey?: string;
   state?: ButtonText;
 }
