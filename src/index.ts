@@ -30,7 +30,9 @@ function validateConfig() {
     process.exit(1);
   }
 
-  const hasAnyDay = Object.values(reservationsPreferences).some(v => v);
+  const hasAnyDay = Object.values(reservationsPreferences).some(
+  preferences => preferences.length > 0
+  );
   if (!hasAnyDay) {
     console.warn(
       `⚠️ No days configured — set at least one of MONDAY…SUNDAY in your repository variables ` +
