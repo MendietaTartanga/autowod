@@ -16,7 +16,6 @@ import {
 
 import {
   isCI,
-  baseUrl,
   email,
   password,
   reservationsPreferences,
@@ -97,7 +96,8 @@ async function main(): Promise<void> {
         'Chrome/91.0.4472.124 Safari/537.36'
     );
 
-    const loginUrl = `${baseUrl}/account/login.aspx`;
+    const reservationUrl = 'https://anboto.wodbuster.com/athlete/reservas.aspx';
+    const loginUrl = `https://wodbuster.com/account/login.aspx?cb=anboto&ReturnUrl=${encodeURIComponent(reservationUrl)}`;
 
     console.log('Abriendo la página de inicio de sesión...');
 
