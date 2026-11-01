@@ -145,9 +145,9 @@ const dayResults = await processReservations(
     const unsuccessful = dayResults.length - successful;
 
     console.log('------------------------------');
-    console.log('RESUMEN DEL PROCESO');
-    console.log(`Reservas gestionadas: ${successful}`);
-    console.log(`Pendientes o no gestionadas: ${unsuccessful}`);
+    console.log(dryRun ? 'RESUMEN DE LA PRUEBA' : 'RESUMEN DE RESERVAS');
+    console.log(`Clases encontradas o ya reservadas: ${successful}`);
+    console.log(`Clases no encontradas o pendientes: ${unsuccessful}`);
     console.log('------------------------------');
 
   } catch (error) {
