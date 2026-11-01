@@ -1,3 +1,4 @@
+
 export type ButtonText =
   | 'Borrar'
   | 'Finalizada'
@@ -19,7 +20,10 @@ export interface ReservationPreference {
   className: string;
 }
 
-export type ReservationPreferences = Record<WeekDay, string | null>;
+export type ReservationPreferences = Record<
+  WeekDay,
+  string | null
+>;
 
 export type TerminalBookingStatus =
   | 'booked'
@@ -27,7 +31,10 @@ export type TerminalBookingStatus =
   | 'finished'
   | 'different-time';
 
-export type BookingState = Record<string, TerminalBookingStatus>;
+export type BookingState = Record<
+  string,
+  TerminalBookingStatus
+>;
 
 export interface ReservationResult {
   success: boolean;
