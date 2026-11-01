@@ -14,7 +14,7 @@ export type WeekDay =
   | 'saturday'
   | 'sunday';
 
-export type ReservationPreferences = Record<WeekDay, string | null>;
+export type ReservationPreferences = Record<WeekDay, string[]>;
 
 export type TerminalBookingStatus =
   | 'booked'
