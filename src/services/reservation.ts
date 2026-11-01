@@ -203,7 +203,56 @@ async function verifyReservation(
 
   return action?.state ?? null;
 }
+export async function inspectReservation(
+  page: Page,
+  preference: ParsedPreference
+): Promise<ReservationResult> {
+  const { time, className } = preference;
 
+  const weekDay = await getWeekDayFromUrl(page);
+  const date = getISODateFromUrl(page);
+
+  const preferenceKey = `${date}|${time}|${normalizeText(className)}`;
+
+  const row = await findReservationRow(page, time, className);
+
+  if (!row) {
+    return {
+      success: false,
+      message: `NO ENCONTRADA: ${className} a las ${time} el ${date}.`,
+      weekDay,
+      date,
+      time,
+      className,
+      preferenceKey,
+    };
+  }
+
+  const action = await findActionButton(row);
+
+  if (!action) {
+    return {
+      success: false,
+      message: `CLASE ENCONTRADA, pero sin botón reconocido: ${className} a las ${time}.`,
+      weekDay,
+      date,
+      time,
+      className,
+      preferenceKey,
+    };
+  }
+
+  return {
+    success: action.state === 'Borrar',
+    message: `ENCONTRADA: ${className} a las ${time}. Estado del botón: ${action.state}. No se ha realizado ninguna acción.`,
+    weekDay,
+    date,
+    time,
+    className,
+    preferenceKey,
+    state: action.state,
+  };
+}
 export async function makeReservation(
   page: Page,
   preference: ParsedPreference
