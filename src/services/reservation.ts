@@ -66,6 +66,18 @@ export async function goToReservations(page: Page): Promise<void> {
     { waitUntil: 'networkidle2' }
   );
 
+  const diagnostic = await page.evaluate(() => ({
+    url: window.location.href,
+    title: document.title,
+    bodyText: (document.body?.innerText ?? '').slice(0, 5000),
+    rowClaseCount: document.querySelectorAll('.rowClase').length,
+    links: Array.from(document.querySelectorAll('a'))
+      .map(a => ({ text: (a.innerText ?? '').trim(), href: a.href }))
+      .filter(a => a.text || a.href)
+      .slice(0, 40),
+  }));
+  console.log('Diagnóstico del calendario:', JSON.stringify(diagnostic));
+
   await page.waitForSelector('.rowClase', { timeout: 30000 });
 }
 
