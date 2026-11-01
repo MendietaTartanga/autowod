@@ -139,11 +139,7 @@ async function findReservationRow(
   time: string,
   className: string
 ): Promise<ElementHandle<Element> | null> {
-  const reservationKey = getReservationKey(time);
-
-  const rows = await page.$$(
-    `div[data-magellan-destination="${reservationKey}"] .rowClase`
-  );
+  const rows = await page.$$('.rowClase');
 
   const expectedClass = normalizeText(className);
 
@@ -167,7 +163,6 @@ async function findReservationRow(
 
   return null;
 }
-
 /**
  * Solo devuelve botones de acción reconocidos.
  */
