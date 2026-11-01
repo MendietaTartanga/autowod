@@ -29,3 +29,6 @@ jobs:
 
       - name: Comprobar TypeScript
         run: pnpm typecheck
+
+      - name: Ejecutar tests
+        run: pnpm test
