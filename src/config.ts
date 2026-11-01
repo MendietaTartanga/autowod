@@ -1,6 +1,6 @@
 import type { ReservationPreferences } from './types';
 
-export const baseUrl = 'https://wodbuster.com';
+export const baseUrl = 'https://anboto.wodbuster.com';
 
 // Credenciales de acceso.
 export const email = process.env.EMAIL ?? '';
