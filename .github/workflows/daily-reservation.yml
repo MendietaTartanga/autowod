@@ -163,8 +163,24 @@ jobs:
 
           echo "Current time: $(TZ="$TZ_NAME" date '+%F %T %Z')"
           
-      - name: 🎯 Reservas desactivadas temporalmente
-        run: echo "No se realizarán reservas durante las pruebas."
+      - name: 🧪 Ejecutar prueba de lectura (sin reservar)
+        if: steps.schedule-gate.outputs.should_run == 'true'
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+
+          MONDAY: ${{ vars.MONDAY }}
+          TUESDAY: ${{ vars.TUESDAY }}
+          WEDNESDAY: ${{ vars.WEDNESDAY }}
+          THURSDAY: ${{ vars.THURSDAY }}
+          FRIDAY: ${{ vars.FRIDAY }}
+          SATURDAY: ${{ vars.SATURDAY }}
+          SUNDAY: ${{ vars.SUNDAY }}
+
+          AVAILABLE_DAYS: ${{ vars.AVAILABLE_DAYS }}
+          DRY_RUN: 'true'
+
+        run: pnpm start
 
       - name: 💾 Save booking state
         if: ${{ always() && steps.schedule-gate.outputs.should_run == 'true' }}
