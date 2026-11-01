@@ -113,12 +113,18 @@ async function main(): Promise<void> {
 
     await goToReservations(page);
 
-    console.log('Procesando las reservas configuradas...');
+    const dryRun = process.env.DRY_RUN !== 'false';
 
-    const dayResults = await processReservations(
-      page,
-      reservationsPreferences
+    console.log(
+      dryRun
+        ? 'MODO DE PRUEBA: se leerán las clases, pero no se realizarán reservas.'
+        : 'MODO REAL: se procesarán las reservas configuradas.'
     );
+
+const dayResults = await processReservations(
+  page,
+  reservationsPreferences
+);
 
     const newState = updateState(
       state,
