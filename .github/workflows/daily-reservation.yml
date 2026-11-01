@@ -162,23 +162,9 @@ jobs:
           sleep "$remaining"
 
           echo "Current time: $(TZ="$TZ_NAME" date '+%F %T %Z')"
-
-      - name: 🎯 Run booking script
-        if: steps.schedule-gate.outputs.should_run == 'true'
-        env:
-          EMAIL: ${{ secrets.EMAIL }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-
-          MONDAY: ${{ vars.MONDAY }}
-          TUESDAY: ${{ vars.TUESDAY }}
-          WEDNESDAY: ${{ vars.WEDNESDAY }}
-          THURSDAY: ${{ vars.THURSDAY }}
-          FRIDAY: ${{ vars.FRIDAY }}
-          SATURDAY: ${{ vars.SATURDAY }}
-          SUNDAY: ${{ vars.SUNDAY }}
-
-          AVAILABLE_DAYS: ${{ inputs.available_days || vars.AVAILABLE_DAYS || '7' }}
-        run: pnpm start
+          
+      - name: 🎯 Reservas desactivadas temporalmente
+        run: echo "No se realizarán reservas durante las pruebas."
 
       - name: 💾 Save booking state
         if: ${{ always() && steps.schedule-gate.outputs.should_run == 'true' }}
