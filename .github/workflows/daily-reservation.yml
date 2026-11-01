@@ -1,110 +1,75 @@
 name: Daily Reservation
-run-name: "🏋️ AutoWOD – ${{ github.event_name == 'workflow_dispatch' && 'Manual run' || 'Daily schedule' }}"
+run-name: "🏋️ AutoWOD – ${{ github.event_name == 'workflow_dispatch' && 'Manual run' || 'Sunday booking' }}"
 
 on:
   schedule:
-    # GitHub's scheduler is a best-effort queue: over September 2026 these runs
-    # started 113-177 minutes after their cron time, and the lag keeps growing.
-    # So we fire hours early and the job sleeps until the exact booking time
-    # (BOOKING_TIME, Europe/Madrid — DST included). The margins below are 5h
-    # and 3h in summer, 6h and 4h in winter. Two crons because GitHub also
-    # drops scheduled runs outright every few days — the second only matters
-    # when the first never fires, so it gets a margin of its own.
-    - cron: '30 15 * * *'
-    - cron: '30 17 * * *'
+    # Domingo a las 00:00 UTC.
+    # El proceso esperará hasta las 09:00 en Europe/Madrid.
+    - cron: '0 0 * * 0'
 
-  # Run it manually from the Actions tab whenever you need to.
-  # Useful when your gym opens the whole week at once — trigger once and
-  # set "Days to book ahead" to the number of days you want to cover.
   workflow_dispatch:
     inputs:
       available_days:
-        description: 'Days to book ahead (leave empty to use the AVAILABLE_DAYS variable)'
+        description: 'Days to book ahead (leave empty to use AVAILABLE_DAYS)'
         required: false
         default: ''
 
-# Scheduled runs share one queue so the two crons can't both wake up and book
-# the same sessions at BOOKING_TIME. Manual runs get their own group so they
-# never sit behind a scheduled run that is still waiting for its window.
 concurrency:
   group: reservation-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'scheduled' }}
   cancel-in-progress: false
 
 jobs:
   book-session:
-    name: Book Workout Session
+    name: Book Workout Sessions
     runs-on: ubuntu-latest
-    # Long enough to cover the wait for BOOKING_TIME plus the booking itself.
     timeout-minutes: 420
 
     steps:
       - name: 📥 Get latest code
         uses: actions/checkout@v6
 
-      - name: 🗓️ Decide whether to run today
+      - name: 🗓️ Decide when to run
         id: schedule-gate
         env:
-          BOOKING_FREQUENCY: ${{ vars.BOOKING_FREQUENCY || 'daily' }}
-          BOOKING_WEEKDAY: ${{ vars.BOOKING_WEEKDAY || 'sunday' }}
-          BOOKING_TIME: ${{ vars.BOOKING_TIME || '22:30' }}
+          BOOKING_FREQUENCY: weekly
+          BOOKING_WEEKDAY: sunday
+          BOOKING_TIME: '09:00'
           EVENT_NAME: ${{ github.event_name }}
           TZ_NAME: Europe/Madrid
         run: |
           set -euo pipefail
 
-          # Never wait longer than this. It sits well above the largest margin
-          # a cron above can ask for (6h) and well below a full day, so the only
-          # thing that trips it is GitHub starting us so late that the clock
-          # rolled past midnight in Madrid — the window is behind us by then,
-          # so go now instead of idling until tomorrow night.
-          MAX_WAIT_SECONDS=$(( 12 * 3600 ))
+          MAX_WAIT_SECONDS=$((12 * 3600))
+          LATE_GRACE_SECONDS=$((15 * 60))
 
-          # How late a run may start before the summary flags it as a problem.
-          LATE_GRACE_SECONDS=$(( 15 * 60 ))
-
-          frequency="$(echo "${BOOKING_FREQUENCY:-daily}" | tr '[:upper:]' '[:lower:]' | xargs)"
-          target_day="$(echo "${BOOKING_WEEKDAY:-sunday}" | tr '[:upper:]' '[:lower:]' | xargs)"
-          booking_time="$(echo "${BOOKING_TIME:-22:30}" | xargs)"
+          frequency="$(echo "$BOOKING_FREQUENCY" | tr '[:upper:]' '[:lower:]' | xargs)"
+          target_day="$(echo "$BOOKING_WEEKDAY" | tr '[:upper:]' '[:lower:]' | xargs)"
+          booking_time="$(echo "$BOOKING_TIME" | xargs)"
 
           if ! printf '%s' "$booking_time" | grep -qE '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'; then
-            echo "Unknown BOOKING_TIME '$BOOKING_TIME'; defaulting to 22:30."
-            echo "Unknown BOOKING_TIME '$BOOKING_TIME'; defaulted to 22:30 for this run." >> "$GITHUB_STEP_SUMMARY"
-            booking_time="22:30"
+            echo "Invalid booking time: $booking_time"
+            exit 1
           fi
 
-          case "$target_day" in
-            monday|tuesday|wednesday|thursday|friday|saturday|sunday) ;;
-            *)
-              echo "Unknown BOOKING_WEEKDAY '$BOOKING_WEEKDAY'; defaulting to daily."
-              echo "Unknown BOOKING_WEEKDAY '$BOOKING_WEEKDAY'; defaulted to daily for this run." >> "$GITHUB_STEP_SUMMARY"
-              frequency="daily"
-              ;;
-          esac
-
-          # Today's booking window, resolved in Madrid so DST needs no cron changes.
           today_in_madrid="$(TZ="$TZ_NAME" date +%F)"
           target_epoch="$(TZ="$TZ_NAME" date -d "$today_in_madrid $booking_time" +%s)"
-          wait_seconds=$(( target_epoch - $(date +%s) ))
+          wait_seconds=$((target_epoch - $(date +%s)))
 
           wait_until=""
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            late_note="Manual run — booking immediately instead of waiting for $booking_time."
+            late_note="Manual execution: booking immediately."
           elif [ "$wait_seconds" -gt "$MAX_WAIT_SECONDS" ]; then
-            late_note="⚠️ GitHub started this run so late that $booking_time (Europe/Madrid) has already passed — booking right now."
+            late_note="⚠️ The booking time has passed or GitHub started the workflow too late. Booking immediately."
           elif [ "$wait_seconds" -gt 0 ]; then
             wait_until="$target_epoch"
-            late_note="Will book at $booking_time (Europe/Madrid), in $(( wait_seconds / 60 )) min."
+            late_note="Will book at $booking_time (Europe/Madrid)."
           elif [ "$wait_seconds" -ge "-$LATE_GRACE_SECONDS" ]; then
-            # The backup cron's run waits its turn in the concurrency queue and
-            # starts moments after the first one books. That is the design
-            # working, not a delay — don't cry wolf about it every night.
-            late_note="Booking window already open (started $(( -wait_seconds / 60 )) min after $booking_time, Europe/Madrid) — booking right now."
+            late_note="Booking window is open. Booking now."
           else
-            late_note="⚠️ GitHub started this run $(( -wait_seconds / 60 )) min after $booking_time (Europe/Madrid) — booking right now. If this keeps happening, move the cron times in this workflow earlier."
+            late_note="⚠️ Workflow started late. Booking immediately."
           fi
 
-          # Gate on the day the booking actually lands on, not on the day the
-          # runner happened to boot — those differ when the wait crosses midnight.
           if [ -n "$wait_until" ]; then
             today="$(TZ="$TZ_NAME" date -d "@$target_epoch" +%A | tr '[:upper:]' '[:lower:]')"
           else
@@ -113,18 +78,13 @@ jobs:
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual run requested — booking script will run." >> "$GITHUB_STEP_SUMMARY"
+            echo "Manual execution requested." >> "$GITHUB_STEP_SUMMARY"
           elif [ "$frequency" = "weekly" ] && [ "$today" != "$target_day" ]; then
-            wait_until=""
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Weekly mode is enabled for $target_day. Today is $today in Europe/Madrid, so AutoWOD skipped this scheduled run." >> "$GITHUB_STEP_SUMMARY"
+            echo "Today is $today, not $target_day. Skipping." >> "$GITHUB_STEP_SUMMARY"
           else
-            if [ "$frequency" != "daily" ] && [ "$frequency" != "weekly" ]; then
-              echo "Unknown BOOKING_FREQUENCY '$BOOKING_FREQUENCY'; defaulting to daily."
-              echo "Unknown BOOKING_FREQUENCY '$BOOKING_FREQUENCY'; defaulted to daily for this run." >> "$GITHUB_STEP_SUMMARY"
-            fi
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "AutoWOD will run today ($today, Europe/Madrid)." >> "$GITHUB_STEP_SUMMARY"
+            echo "AutoWOD will run on $today at $booking_time (Europe/Madrid)." >> "$GITHUB_STEP_SUMMARY"
             echo "$late_note" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -178,9 +138,7 @@ jobs:
           restore-keys: |
             booking-state-${{ runner.os }}-
 
-      # Deliberately last: everything above is warm by now, so the booking
-      # request goes out within a second of the target time.
-      - name: ⏳ Wait for the booking window
+      - name: ⏳ Wait until 09:00
         if: ${{ steps.schedule-gate.outputs.should_run == 'true' && steps.schedule-gate.outputs.wait_until != '' }}
         env:
           WAIT_UNTIL: ${{ steps.schedule-gate.outputs.wait_until }}
@@ -188,24 +146,25 @@ jobs:
           TZ_NAME: Europe/Madrid
         run: |
           set -euo pipefail
-          remaining=$(( WAIT_UNTIL - $(date +%s) ))
+
+          remaining=$((WAIT_UNTIL - $(date +%s)))
+
           if [ "$remaining" -le 0 ]; then
-            echo "Booking window already open — continuing."
+            echo "Booking time already reached."
             exit 0
           fi
-          echo "Sleeping ${remaining}s until $BOOKING_TIME ($TZ_NAME)..."
+
+          echo "Waiting ${remaining} seconds until $BOOKING_TIME ($TZ_NAME)..."
           sleep "$remaining"
-          echo "It is now $(TZ="$TZ_NAME" date '+%F %T %Z') — booking."
+
+          echo "Current time: $(TZ="$TZ_NAME" date '+%F %T %Z')"
 
       - name: 🎯 Run booking script
         if: steps.schedule-gate.outputs.should_run == 'true'
         env:
-          # Secrets (sensitive — set in Settings → Secrets and variables → Actions → Secrets tab)
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
-          TWO_CAPTCHA_API_KEY: ${{ secrets.TWO_CAPTCHA_API_KEY }}
 
-          # Variables (set in Settings → Secrets and variables → Actions → Variables tab)
           MONDAY: ${{ vars.MONDAY }}
           TUESDAY: ${{ vars.TUESDAY }}
           WEDNESDAY: ${{ vars.WEDNESDAY }}
@@ -213,7 +172,8 @@ jobs:
           FRIDAY: ${{ vars.FRIDAY }}
           SATURDAY: ${{ vars.SATURDAY }}
           SUNDAY: ${{ vars.SUNDAY }}
-          AVAILABLE_DAYS: ${{ inputs.available_days || vars.AVAILABLE_DAYS }}
+
+          AVAILABLE_DAYS: ${{ inputs.available_days || vars.AVAILABLE_DAYS || '7' }}
         run: pnpm start
 
       - name: 💾 Save booking state
