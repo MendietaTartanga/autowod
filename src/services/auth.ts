@@ -15,7 +15,6 @@ export async function login(
   await page.waitForSelector(passwordSelector, { visible: true, timeout: 10000 });
   await page.waitForSelector(loginButtonSelector, { visible: true, timeout: 10000 });
 
-  // Seleccionamos el contenido de cada campo con combinaciones de teclado válidas.
   await page.click(emailSelector);
   await page.keyboard.down('Control');
   await page.keyboard.press('A');
@@ -40,24 +39,33 @@ export async function login(
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
+  // Mantener esta función de navegador sin funciones auxiliares nombradas:
+  // esbuild podría inyectar __name, que no existe dentro de la página.
   const diagnostics = await page.evaluate((selectors) => {
     const emailInput = document.querySelector(selectors.email) as HTMLInputElement | null;
     const passwordInput = document.querySelector(selectors.password) as HTMLInputElement | null;
     const button = document.querySelector(selectors.button) as HTMLButtonElement | HTMLInputElement | null;
     const form = emailInput?.form ?? passwordInput?.form ?? null;
-
-    const visible = (element: Element | null): boolean => {
-      if (!element) return false;
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return style.display !== 'none' && style.visibility !== 'hidden' &&
-        rect.width > 0 && rect.height > 0;
-    };
+    const style = emailInput ? window.getComputedStyle(emailInput) : null;
+    const rect = emailInput ? emailInput.getBoundingClientRect() : null;
+    const loginFormVisible = Boolean(
+      emailInput && style &&
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      rect && rect.width > 0 && rect.height > 0
+    );
 
     const messages = Array.from(document.querySelectorAll(
       '[role="alert"], .validation-summary-errors, .field-validation-error, .alert, .error, [id*="Error"], [id*="error"], [id*="Mensaje"], [id*="mensaje"]'
     ))
-      .filter(visible)
+      .filter((element) => {
+        const messageStyle = window.getComputedStyle(element);
+        const messageRect = element.getBoundingClientRect();
+        return messageStyle.display !== 'none' &&
+          messageStyle.visibility !== 'hidden' &&
+          messageRect.width > 0 &&
+          messageRect.height > 0;
+      })
       .map((element) => element.textContent?.trim() ?? '')
       .filter((message) => message.length > 0)
       .slice(0, 8);
@@ -69,7 +77,7 @@ export async function login(
     return {
       url: window.location.href,
       title: document.title,
-      loginFormVisible: visible(emailInput),
+      loginFormVisible,
       emailFilled: Boolean(emailInput?.value),
       passwordFilled: Boolean(passwordInput?.value),
       buttonType: button?.getAttribute('type') ?? null,
