@@ -64,8 +64,9 @@ async function main(): Promise<void> {
 
   const state = loadState();
   const upcomingDates = getUpcomingBookableDates();
-
-  if (allDatesCovered(state, upcomingDates)) {
+  const dryRun = process.env.DRY_RUN !== 'false';
+  
+  if (!dryRun && allDatesCovered(state, upcomingDates)) {
     console.log(
       'Todas las reservas configuradas ya están gestionadas. No es necesario repetir el proceso.'
     );
