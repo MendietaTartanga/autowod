@@ -115,6 +115,10 @@ jobs:
         if: steps.schedule-gate.outputs.should_run == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: 🔍 Check TypeScript
+        if: steps.schedule-gate.outputs.should_run == 'true'
+        run: pnpm typecheck
+
       - name: 💾 Cache Puppeteer browser
         if: steps.schedule-gate.outputs.should_run == 'true'
         uses: actions/cache@v5
