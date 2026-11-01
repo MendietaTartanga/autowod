@@ -1,4 +1,3 @@
-
 import { Page } from 'puppeteer';
 
 export async function login(
@@ -10,43 +9,62 @@ export async function login(
   const passwordSelector = '#body_body_CtlLogin_IoPassword';
   const loginButtonSelector = '#body_body_CtlLogin_CtlAceptar';
 
+  console.log('Esperando el formulario de inicio de sesión...');
+
   await page.waitForSelector(emailSelector, {
     visible: true,
     timeout: 30000,
   });
 
+  await page.waitForSelector(passwordSelector, {
+    visible: true,
+    timeout: 10000,
+  });
+
+  await page.waitForSelector(loginButtonSelector, {
+    visible: true,
+    timeout: 10000,
+  });
+
+  // Introducimos las credenciales.
   await page.type(emailSelector, email);
   await page.type(passwordSelector, password);
 
+  console.log('Enviando las credenciales...');
+
+  // Esperamos a que termine la navegación o la respuesta de la página.
   await Promise.all([
     page.waitForNavigation({
       waitUntil: 'networkidle2',
       timeout: 60000,
     }).catch(() => null),
+
     page.click(loginButtonSelector),
   ]);
 
-  // Si aparece la pantalla de elección del dispositivo,
-  // seleccionamos la opción de no recordar el navegador.
-  const secondButtonSelector =
-    '#body_body_CtlUp label.button:nth-of-type(2)';
+  // Comprobamos si aparece algún CAPTCHA conocido.
+  const captchaDetected = await page.evaluate(() => {
+    return Boolean(
+      document.querySelector(
+        [
+          'iframe[src*="recaptcha"]',
+          'iframe[src*="hcaptcha"]',
+          '.g-recaptcha',
+          '.h-captcha',
+          '[data-sitekey]',
+        ].join(',')
+      )
+    );
+  });
 
-  const secondButton = await page
-    .waitForSelector(secondButtonSelector, {
-      visible: true,
-      timeout: 5000,
-    })
-    .catch(() => null);
-
-  if (secondButton) {
-    await secondButton.click();
-
-    await page.waitForNetworkIdle({
-      timeout: 10000,
-    }).catch(() => {});
+  if (captchaDetected) {
+    throw new Error(
+      'WodBuster ha solicitado una verificación CAPTCHA. ' +
+      'El proceso se detiene y requiere intervención manual.'
+    );
   }
 
-  // Comprobamos que ya no estamos en la pantalla de login.
+  // Comprobamos si el formulario de acceso sigue visible.
   const loginFormStillVisible = await page
     .waitForSelector(emailSelector, {
       visible: true,
@@ -57,9 +75,14 @@ export async function login(
 
   if (loginFormStillVisible) {
     throw new Error(
-      'No se ha podido confirmar el inicio de sesión. Comprueba las credenciales o si WodBuster solicita una verificación adicional.'
+      'No se ha podido iniciar sesión. ' +
+      'Comprueba las credenciales o si WodBuster solicita ' +
+      'una verificación adicional.'
     );
   }
 
-  console.log('Inicio de sesión aparentemente correcto.');
+  console.log(
+    'El formulario de acceso ya no está visible. ' +
+    'Se comprobará el acceso al calendario en el siguiente paso.'
+  );
 }
