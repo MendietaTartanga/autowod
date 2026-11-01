@@ -411,7 +411,11 @@ export async function processReservations(
     const preferencesForDay = parsePreferenceValues(preferenceValue);
 
     for (const preference of preferencesForDay) {
-      const result = await makeReservation(page, preference);
+      const dryRun = process.env.DRY_RUN !== 'false';
+
+      const result = dryRun
+      ? await inspectReservation(page, preference)
+      : await makeReservation(page, preference);
 
       dayResults.push({ weekDay, result });
 
