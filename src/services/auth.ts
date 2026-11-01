@@ -15,12 +15,14 @@ export async function login(
   await page.waitForSelector(passwordSelector, { visible: true, timeout: 10000 });
   await page.waitForSelector(loginButtonSelector, { visible: true, timeout: 10000 });
 
-  // Limpiamos los campos antes de escribir para evitar valores previos/autocompletados.
-  await page.click(emailSelector, { clickCount: 3 });
+  // Limpiamos los campos antes de escribir.
+  await page.click(emailSelector);
+  await page.keyboard.press('Control+A');
   await page.keyboard.press('Backspace');
   await page.type(emailSelector, email);
 
-  await page.click(passwordSelector, { clickCount: 3 });
+  await page.click(passwordSelector);
+  await page.keyboard.press('Control+A');
   await page.keyboard.press('Backspace');
   await page.type(passwordSelector, password);
 
