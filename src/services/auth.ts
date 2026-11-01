@@ -39,8 +39,6 @@ export async function login(
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // Mantener esta función de navegador sin funciones auxiliares nombradas:
-  // esbuild podría inyectar __name, que no existe dentro de la página.
   const diagnostics = await page.evaluate((selectors) => {
     const emailInput = document.querySelector(selectors.email) as HTMLInputElement | null;
     const passwordInput = document.querySelector(selectors.password) as HTMLInputElement | null;
@@ -49,23 +47,13 @@ export async function login(
     const style = emailInput ? window.getComputedStyle(emailInput) : null;
     const rect = emailInput ? emailInput.getBoundingClientRect() : null;
     const loginFormVisible = Boolean(
-      emailInput && style &&
-      style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      rect && rect.width > 0 && rect.height > 0
+      emailInput && style && style.display !== 'none' &&
+      style.visibility !== 'hidden' && rect && rect.width > 0 && rect.height > 0
     );
 
     const messages = Array.from(document.querySelectorAll(
       '[role="alert"], .validation-summary-errors, .field-validation-error, .alert, .error, [id*="Error"], [id*="error"], [id*="Mensaje"], [id*="mensaje"]'
     ))
-      .filter((element) => {
-        const messageStyle = window.getComputedStyle(element);
-        const messageRect = element.getBoundingClientRect();
-        return messageStyle.display !== 'none' &&
-          messageStyle.visibility !== 'hidden' &&
-          messageRect.width > 0 &&
-          messageRect.height > 0;
-      })
       .map((element) => element.textContent?.trim() ?? '')
       .filter((message) => message.length > 0)
       .slice(0, 8);
@@ -80,9 +68,16 @@ export async function login(
       loginFormVisible,
       emailFilled: Boolean(emailInput?.value),
       passwordFilled: Boolean(passwordInput?.value),
+      emailName: emailInput?.name ?? null,
+      passwordName: passwordInput?.name ?? null,
       buttonType: button?.getAttribute('type') ?? null,
+      buttonName: button?.getAttribute('name') ?? null,
       formMethod: form?.method ?? null,
       formAction: form?.action ?? null,
+      hiddenFieldNames: form
+        ? Array.from(form.querySelectorAll('input[type="hidden"]')).map((input) => (input as HTMLInputElement).name).slice(0, 20)
+        : [],
+      pageText: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 900),
       captcha,
       messages,
     };
@@ -102,17 +97,18 @@ export async function login(
       title: diagnostics.title,
       emailFilled: diagnostics.emailFilled,
       passwordFilled: diagnostics.passwordFilled,
+      emailName: diagnostics.emailName,
+      passwordName: diagnostics.passwordName,
       buttonType: diagnostics.buttonType,
+      buttonName: diagnostics.buttonName,
       formMethod: diagnostics.formMethod,
       formAction: diagnostics.formAction,
+      hiddenFieldNames: diagnostics.hiddenFieldNames,
+      pageText: diagnostics.pageText,
       mensajes: diagnostics.messages,
     }));
 
-    const detail = diagnostics.messages.length > 0
-      ? diagnostics.messages.join(' | ')
-      : 'WodBuster no ha mostrado un mensaje de error reconocible.';
-
-    throw new Error('El formulario de acceso sigue visible. ' + detail);
+    throw new Error('El formulario de acceso sigue visible. Consulta el diagnóstico anterior.');
   }
 
   console.log('Inicio de sesión aparentemente correcto; se comprobará el calendario.');
