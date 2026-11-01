@@ -1,16 +1,40 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+vi.mock('../config', () => ({
+  availableDays: 7,
+  reservationsPreferences: {
+    monday: '17:15|Open',
+    tuesday: '17:15|Open;18:15|WOD',
+    wednesday: '15:30|Open',
+    thursday: '17:15|Open',
+    friday: '15:30|Open',
+    saturday: '10:00|Open;11:00|WOD',
+    sunday: null,
+  },
+}));
+
 import {
   allDatesCovered,
   updateState,
   terminalStatusFromResult,
 } from '../services/state';
+
 import { ReservationResult } from '../types';
 
 function makeResult(
   state?: ReservationResult['state'],
-  success = false
+  success = false,
+  time = '17:15',
+  className = 'Open'
 ): ReservationResult {
-  return { success, message: '', weekDay: 'monday', state };
+  return {
+    success,
+    message: '',
+    weekDay: 'monday',
+    state,
+    time,
+    className,
+  };
 }
 
 describe('terminalStatusFromResult', () => {
@@ -34,11 +58,11 @@ describe('terminalStatusFromResult', () => {
     expect(terminalStatusFromResult(makeResult('Avisar', true))).toBe('waitlisted');
   });
 
-  it('returns null for failed Entrenar (booking error)', () => {
+  it('returns null for failed Entrenar', () => {
     expect(terminalStatusFromResult(makeResult('Entrenar', false))).toBeNull();
   });
 
-  it('returns null for failed Avisar (waitlist error)', () => {
+  it('returns null for failed Avisar', () => {
     expect(terminalStatusFromResult(makeResult('Avisar', false))).toBeNull();
   });
 
@@ -56,24 +80,41 @@ describe('allDatesCovered', () => {
     expect(allDatesCovered({}, ['2026-05-19'])).toBe(false);
   });
 
-  it('returns true when all dates have a terminal status', () => {
-    expect(allDatesCovered({ '2026-05-19': 'booked' }, ['2026-05-19'])).toBe(true);
+  it('returns true when all preferences for a date have terminal status', () => {
+    const state = {
+      '2026-05-19|17:15|open': 'booked' as const,
+      '2026-05-19|18:15|wod': 'finished' as const,
+    };
+
+    expect(allDatesCovered(state, ['2026-05-19'])).toBe(true);
+  });
+
+  it('returns false when only some preferences are covered', () => {
+    const state = {
+      '2026-05-19|17:15|open': 'booked' as const,
+    };
+
+    expect(allDatesCovered(state, ['2026-05-19'])).toBe(false);
   });
 
   it('returns false when only some dates are covered', () => {
+    const state = {
+      '2026-05-19|17:15|open': 'booked' as const,
+      '2026-05-19|18:15|wod': 'finished' as const,
+    };
+
     expect(
-      allDatesCovered({ '2026-05-19': 'booked' }, ['2026-05-19', '2026-05-20'])
+      allDatesCovered(state, ['2026-05-19', '2026-05-20'])
     ).toBe(false);
   });
 
   it('accepts all four terminal statuses', () => {
     const state = {
-      '2026-05-19': 'booked' as const,
-      '2026-05-20': 'waitlisted' as const,
-      '2026-05-21': 'finished' as const,
-      '2026-05-22': 'different-time' as const,
+      '2026-05-19|17:15|open': 'booked' as const,
+      '2026-05-19|18:15|wod': 'waitlisted' as const,
     };
-    expect(allDatesCovered(state, Object.keys(state))).toBe(true);
+
+    expect(allDatesCovered(state, ['2026-05-19'])).toBe(true);
   });
 });
 
@@ -87,46 +128,84 @@ describe('updateState', () => {
     vi.useRealTimers();
   });
 
-  it('adds a newly booked date', () => {
-    const next = updateState({}, [{ date: '2026-05-19', result: makeResult('Borrar') }]);
-    expect(next['2026-05-19']).toBe('booked');
+  it('adds a newly booked reservation', () => {
+    const next = updateState({}, [
+      {
+        date: '2026-05-19',
+        result: makeResult('Borrar'),
+      },
+    ]);
+
+    expect(next['2026-05-19|17:15|open']).toBe('booked');
   });
 
-  it('adds a waitlisted date', () => {
+  it('adds a waitlisted reservation', () => {
     const next = updateState({}, [
-      { date: '2026-05-20', result: makeResult('Avisar', true) },
+      {
+        date: '2026-05-20',
+        result: makeResult('Avisar', true, '15:30', 'Open'),
+      },
     ]);
-    expect(next['2026-05-20']).toBe('waitlisted');
+
+    expect(next['2026-05-20|15:30|open']).toBe('waitlisted');
   });
 
   it('prunes dates before today', () => {
-    const next = updateState({ '2026-05-18': 'booked' }, []);
-    expect(next['2026-05-18']).toBeUndefined();
+    const next = updateState(
+      { '2026-05-18|17:15|open': 'booked' },
+      []
+    );
+
+    expect(next['2026-05-18|17:15|open']).toBeUndefined();
   });
 
   it('keeps today and future dates', () => {
     const existing = {
-      '2026-05-19': 'booked' as const,
-      '2026-05-25': 'waitlisted' as const,
+      '2026-05-19|17:15|open': 'booked' as const,
+      '2026-05-25|17:15|open': 'waitlisted' as const,
     };
+
     const next = updateState(existing, []);
-    expect(next['2026-05-19']).toBe('booked');
-    expect(next['2026-05-25']).toBe('waitlisted');
+
+    expect(next['2026-05-19|17:15|open']).toBe('booked');
+    expect(next['2026-05-25|17:15|open']).toBe('waitlisted');
   });
 
   it('skips results with no terminal status', () => {
-    const next = updateState(
-      {},
-      [{ date: '2026-05-19', result: makeResult('Entrenar', false) }]
-    );
-    expect(next['2026-05-19']).toBeUndefined();
+    const next = updateState({}, [
+      {
+        date: '2026-05-19',
+        result: makeResult('Entrenar', false),
+      },
+    ]);
+
+    expect(Object.keys(next)).toHaveLength(0);
   });
 
   it('skips results with no date', () => {
-    const next = updateState(
-      {},
-      [{ date: undefined, result: makeResult('Borrar') }]
-    );
+    const next = updateState({}, [
+      {
+        date: undefined,
+        result: makeResult('Borrar'),
+      },
+    ]);
+
+    expect(Object.keys(next)).toHaveLength(0);
+  });
+
+  it('skips results without time or class name', () => {
+    const result = {
+      ...makeResult('Borrar'),
+      time: undefined,
+    };
+
+    const next = updateState({}, [
+      {
+        date: '2026-05-19',
+        result,
+      },
+    ]);
+
     expect(Object.keys(next)).toHaveLength(0);
   });
 });
