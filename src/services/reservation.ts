@@ -1,4 +1,3 @@
-
 import { appendFileSync } from 'fs';
 import { Page, ElementHandle } from 'puppeteer';
 import {
@@ -192,8 +191,7 @@ async function findActionButton(
 }
 
 /**
- * Después de solicitar una reserva, comprueba si el botón
- * ha cambiado a Borrar, que indica que ya está inscrita.
+ * Comprueba el estado después de solicitar una reserva.
  */
 async function verifyReservation(
   page: Page,
@@ -319,19 +317,26 @@ export async function makeReservation(
   return result;
 }
 
+/**
+ * Escribe el resumen de GitHub Actions.
+ * Recibe los resultados agrupados por día.
+ */
 function writeJobSummary(
-  results: ReservationResult[]
+  results: Array<{
+    weekDay: string;
+    result: ReservationResult;
+  }>
 ): void {
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
 
   if (!summaryFile) return;
 
-  const rows = results.map(result => {
+  const rows = results.map(({ weekDay, result }) => {
     const status = result.success
       ? result.message
       : `Pendiente: ${result.message}`;
 
-    return `| ${result.weekDay} | ${result.date ?? '—'} | ${result.time ?? '—'} | ${result.className ?? '—'} | ${status} |`;
+    return `| ${weekDay} | ${result.date ?? '—'} | ${result.time ?? '—'} | ${result.className ?? '—'} | ${status} |`;
   });
 
   const lines = [
