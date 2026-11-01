@@ -1,4 +1,3 @@
-
 import { launch } from 'puppeteer';
 
 import { login } from './services/auth';
@@ -35,7 +34,7 @@ function validateConfig(): boolean {
   if (missing.length > 0) {
     console.error(
       `Faltan las siguientes variables: ${missing.join(', ')}\n` +
-      'Configúralas en Settings → Secrets and variables → Actions.'
+        'Configúralas en Settings → Secrets and variables → Actions.'
     );
 
     return false;
@@ -62,10 +61,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  const dryRun = process.env.DRY_RUN !== 'false';
+
   const state = loadState();
   const upcomingDates = getUpcomingBookableDates();
-  const dryRun = process.env.DRY_RUN !== 'false';
-  
+
+  // En modo real, evitamos repetir reservas que ya están gestionadas.
+  // En modo prueba, siempre permitimos consultar el calendario.
   if (!dryRun && allDatesCovered(state, upcomingDates)) {
     console.log(
       'Todas las reservas configuradas ya están gestionadas. No es necesario repetir el proceso.'
@@ -76,10 +78,7 @@ async function main(): Promise<void> {
   const browser = await launch({
     headless: isCI,
     slowMo: isCI ? 0 : 50,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-    ],
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
   try {
@@ -94,8 +93,8 @@ async function main(): Promise<void> {
 
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/91.0.4472.124 Safari/537.36'
+        'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+        'Chrome/91.0.4472.124 Safari/537.36'
     );
 
     const loginUrl = `${baseUrl}/account/login.aspx`;
@@ -120,22 +119,29 @@ async function main(): Promise<void> {
         : 'MODO REAL: se procesarán las reservas configuradas.'
     );
 
-const dayResults = await processReservations(
-  page,
-  reservationsPreferences
-);
-
-    const newState = updateState(
-      state,
-      dayResults.map(({ result }) => ({
-        date: result.date,
-        result,
-      }))
+    const dayResults = await processReservations(
+      page,
+      reservationsPreferences
     );
 
-    saveState(newState);
+    // El modo de prueba nunca modifica el estado guardado.
+    if (!dryRun) {
+      const newState = updateState(
+        state,
+        dayResults.map(({ result }) => ({
+          date: result.date,
+          result,
+        }))
+      );
 
-    console.log('Estado de las reservas actualizado.');
+      saveState(newState);
+
+      console.log('Estado de las reservas actualizado.');
+    } else {
+      console.log(
+        'Modo de prueba: no se ha modificado el estado de las reservas.'
+      );
+    }
 
     const successful = dayResults.filter(
       ({ result }) => result.success
@@ -144,11 +150,12 @@ const dayResults = await processReservations(
     const unsuccessful = dayResults.length - successful;
 
     console.log('------------------------------');
-    console.log(dryRun ? 'RESUMEN DE LA PRUEBA' : 'RESUMEN DE RESERVAS');
-    console.log(`Clases encontradas o ya reservadas: ${successful}`);
-    console.log(`Clases no encontradas o pendientes: ${unsuccessful}`);
+    console.log(
+      dryRun ? 'RESUMEN DE LA PRUEBA' : 'RESUMEN DE RESERVAS'
+    );
+    console.log(`Resultados correctos: ${successful}`);
+    console.log(`Resultados pendientes o fallidos: ${unsuccessful}`);
     console.log('------------------------------');
-
   } catch (error) {
     console.error(
       'Error durante la ejecución:',
@@ -156,7 +163,6 @@ const dayResults = await processReservations(
     );
 
     process.exitCode = 1;
-
   } finally {
     await browser.close();
     console.log('Proceso finalizado.');
