@@ -11,7 +11,30 @@ export async function login(
 
   console.log('Esperando el formulario de inicio de sesión...');
 
-  await page.waitForSelector(emailSelector, { visible: true, timeout: 30000 });
+  try {
+    await page.waitForSelector(emailSelector, { visible: true, timeout: 30000 });
+  } catch (error) {
+    const pageDiagnostic = await page.evaluate(() => ({
+      url: window.location.href,
+      title: document.title,
+      text: (document.body?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 1200),
+      inputs: Array.from(document.querySelectorAll('input')).map(input => ({
+        id: input.id,
+        name: input.name,
+        type: input.type,
+        placeholder: input.placeholder,
+      })).slice(0, 30),
+      buttons: Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"]'))
+        .map(button => ({
+          id: (button as HTMLButtonElement).id,
+          name: (button as HTMLButtonElement).getAttribute('name'),
+          text: (button.textContent ?? (button as HTMLInputElement).value ?? '').trim(),
+          type: (button as HTMLButtonElement).getAttribute('type'),
+        })).slice(0, 20),
+    }));
+    console.log('Diagnóstico del formulario de acceso:', JSON.stringify(pageDiagnostic));
+    throw new Error('No se ha encontrado el campo de email esperado. Revisa el diagnóstico del formulario.');
+  }
   await page.waitForSelector(passwordSelector, { visible: true, timeout: 10000 });
   await page.waitForSelector(loginButtonSelector, { visible: true, timeout: 10000 });
 
