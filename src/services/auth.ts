@@ -11,79 +11,57 @@ export async function login(
 
   console.log('Esperando el formulario de inicio de sesión...');
 
-  await page.waitForSelector(emailSelector, {
-    visible: true,
-    timeout: 30000,
-  });
+  await page.waitForSelector(emailSelector, { visible: true, timeout: 30000 });
+  await page.waitForSelector(passwordSelector, { visible: true, timeout: 10000 });
+  await page.waitForSelector(loginButtonSelector, { visible: true, timeout: 10000 });
 
-  await page.waitForSelector(passwordSelector, {
-    visible: true,
-    timeout: 10000,
-  });
-
-  await page.waitForSelector(loginButtonSelector, {
-    visible: true,
-    timeout: 10000,
-  });
-
-  // Introducimos las credenciales sin registrarlas en los logs.
   await page.type(emailSelector, email);
   await page.type(passwordSelector, password);
 
   console.log('Enviando las credenciales...');
 
   await Promise.all([
-    page.waitForNavigation({
-      waitUntil: 'networkidle2',
-      timeout: 60000,
-    }).catch(() => null),
+    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null),
     page.click(loginButtonSelector),
   ]);
 
-  // Damos tiempo a que WodBuster muestre posibles avisos.
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  const diagnostics = await page.evaluate((selectors) => {
-    const visible = (element: Element | null): boolean => {
-      if (!element) return false;
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return style.display !== 'none' &&
+  // La función evaluada evita funciones auxiliares con nombre:
+  // esbuild puede inyectar referencias __name que el navegador no conoce.
+  const diagnostics = await page.evaluate((selector) => {
+    const emailElement = document.querySelector(selector);
+    let loginFormVisible = false;
+
+    if (emailElement) {
+      const style = window.getComputedStyle(emailElement);
+      const rect = emailElement.getBoundingClientRect();
+      loginFormVisible =
+        style.display !== 'none' &&
         style.visibility !== 'hidden' &&
         rect.width > 0 &&
         rect.height > 0;
-    };
+    }
 
-    const messages = Array.from(
-      document.querySelectorAll(
-        '[role="alert"], .validation-summary-errors, .field-validation-error, .alert, .error'
-      )
-    )
-      .filter(visible)
+    const messages = Array.from(document.querySelectorAll(
+      '[role="alert"], .validation-summary-errors, .field-validation-error, .alert, .error'
+    ))
       .map((element) => element.textContent?.trim() ?? '')
-      .filter(Boolean)
+      .filter((message) => message.length > 0)
       .slice(0, 5);
 
-    const captcha = Boolean(
-      document.querySelector(
-        [
-          'iframe[src*="recaptcha"]',
-          'iframe[src*="hcaptcha"]',
-          '.g-recaptcha',
-          '.h-captcha',
-          '[data-sitekey]',
-        ].join(',')
-      )
-    );
+    const captcha = Boolean(document.querySelector(
+      'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], .g-recaptcha, .h-captcha, [data-sitekey]'
+    ));
 
     return {
       url: window.location.href,
       title: document.title,
-      loginFormVisible: visible(document.querySelector(selectors.email)),
+      loginFormVisible,
       captcha,
       messages,
     };
-  }, { email: emailSelector });
+  }, emailSelector);
 
   if (diagnostics.captcha) {
     throw new Error(
@@ -103,9 +81,7 @@ export async function login(
       ? diagnostics.messages.join(' | ')
       : 'WodBuster no ha mostrado un mensaje de error reconocible.';
 
-    throw new Error(
-      'El formulario de acceso sigue visible. ' + detail
-    );
+    throw new Error('El formulario de acceso sigue visible. ' + detail);
   }
 
   console.log(
