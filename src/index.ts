@@ -114,8 +114,6 @@ async function main(): Promise<void> {
 
     await goToReservations(page);
 
-    const dryRun = process.env.DRY_RUN !== 'false';
-
     console.log(
       dryRun
         ? 'MODO DE PRUEBA: se leerán las clases, pero no se realizarán reservas.'
