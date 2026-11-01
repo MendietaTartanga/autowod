@@ -1,35 +1,47 @@
+
 import { describe, it, expect } from 'vitest';
-import { parsePreferenceValue, getReservationKey } from '../services/reservation';
+import {
+  parsePreferenceValues,
+  getReservationKey,
+} from '../services/reservation';
 
-describe('parsePreferenceValue', () => {
-  it('returns nulls for null input', () => {
-    expect(parsePreferenceValue(null)).toEqual({ time: null, className: null });
+describe('parsePreferenceValues', () => {
+  it('returns an empty array for null input', () => {
+    expect(parsePreferenceValues(null)).toEqual([]);
   });
 
-  it('returns nulls for empty string', () => {
-    expect(parsePreferenceValue('')).toEqual({ time: null, className: null });
+  it('returns an empty array for empty input', () => {
+    expect(parsePreferenceValues('')).toEqual([]);
   });
 
-  it('parses time-only preference', () => {
-    expect(parsePreferenceValue('17:00')).toEqual({ time: '17:00', className: null });
+  it('parses a time and class name', () => {
+    expect(parsePreferenceValues('17:00|CrossFit')).toEqual([
+      { time: '17:00', className: 'CrossFit' },
+    ]);
   });
 
-  it('parses time and class name', () => {
-    expect(parsePreferenceValue('17:00|CrossFit')).toEqual({
-      time: '17:00',
-      className: 'CrossFit',
-    });
+  it('trims whitespace from time and class name', () => {
+    expect(parsePreferenceValues(' 09:00 | WOD ')).toEqual([
+      { time: '09:00', className: 'WOD' },
+    ]);
   });
 
-  it('trims whitespace from both parts', () => {
-    expect(parsePreferenceValue('  09:00  |  WOD  ')).toEqual({
-      time: '09:00',
-      className: 'WOD',
-    });
+  it('parses multiple preferences separated by semicolons', () => {
+    expect(
+      parsePreferenceValues('17:15|Open;18:15|WOD')
+    ).toEqual([
+      { time: '17:15', className: 'Open' },
+      { time: '18:15', className: 'WOD' },
+    ]);
   });
 
-  it('returns null time when only class name provided', () => {
-    expect(parsePreferenceValue('|CrossFit')).toEqual({ time: null, className: 'CrossFit' });
+  it('ignores preferences with invalid format', () => {
+    expect(
+      parsePreferenceValues('17:00|Open;invalid;18:15|WOD')
+    ).toEqual([
+      { time: '17:00', className: 'Open' },
+      { time: '18:15', className: 'WOD' },
+    ]);
   });
 });
 
