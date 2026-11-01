@@ -59,7 +59,8 @@ export async function goToReservations(page: Page): Promise<void> {
   today.setUTCHours(0, 0, 0, 0);
 
   const todayInSeconds = Math.floor(today.getTime() / 1000);
-  const currentDomain = new URL(page.url()).origin;
+  // El calendario pertenece al centro Anboto, no al dominio público.
+  const currentDomain = 'https://anboto.wodbuster.com';
 
   await page.goto(
     `${currentDomain}/athlete/reservas.aspx?t=${todayInSeconds}`,
