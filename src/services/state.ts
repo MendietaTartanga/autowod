@@ -1,18 +1,23 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+
 import {
   BookingState,
   ReservationResult,
   TerminalBookingStatus,
   WeekDay,
 } from '../types';
+
 import {
   availableDays,
   reservationsPreferences,
 } from '../config';
+
 import { parsePreferenceValues } from './reservation';
 
 const STATE_FILE = 'booking-state.json';
+
+const TIME_ZONE = 'Europe/Madrid';
 
 const TERMINAL: TerminalBookingStatus[] = [
   'booked',
@@ -32,7 +37,7 @@ const WEEK_DAY_NAMES: WeekDay[] = [
 ];
 
 /**
- * Normaliza el nombre de la actividad igual que reservation.ts.
+ * Normaliza el nombre de la actividad.
  */
 function normalizeText(value: string): string {
   return value
@@ -41,6 +46,28 @@ function normalizeText(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Obtiene la fecha actual en la zona horaria de España.
+ */
+function getTodayInMadrid(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+
+  if (!year || !month || !day) {
+    throw new Error('No se ha podido calcular la fecha de España.');
+  }
+
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -55,53 +82,92 @@ function createBookingKey(
   return `${date}|${time}|${normalizeText(className)}`;
 }
 
+/**
+ * Carga el estado de las reservas.
+ */
 export function loadState(): BookingState {
-  if (!existsSync(STATE_FILE)) return {};
+  if (!existsSync(STATE_FILE)) {
+    return {};
+  }
 
   try {
-    return JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
+    const data: unknown = JSON.parse(
+      readFileSync(STATE_FILE, 'utf-8')
+    );
+
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      Array.isArray(data)
+    ) {
+      console.warn(
+        'El archivo de estado no tiene un formato válido. Se inicia un estado vacío.'
+      );
+
+      return {};
+    }
+
+    return data as BookingState;
   } catch {
+    console.warn(
+      'No se ha podido leer booking-state.json. Se inicia un estado vacío.'
+    );
+
     return {};
   }
 }
 
+/**
+ * Guarda el estado de las reservas.
+ */
 export function saveState(state: BookingState): void {
-  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  writeFileSync(
+    STATE_FILE,
+    JSON.stringify(state, null, 2),
+    'utf-8'
+  );
 }
 
 /**
- * Elimina del estado las reservas de fechas anteriores a hoy.
+ * Elimina del estado las reservas de fechas anteriores a hoy
+ * en la zona horaria de España.
  */
 function pruneOldDates(state: BookingState): BookingState {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-
-  const todayISO = today.toISOString().split('T')[0];
+  const todayISO = getTodayInMadrid();
 
   return Object.fromEntries(
     Object.entries(state).filter(([key]) => {
       const date = key.split('|')[0];
-      return date >= todayISO;
+
+      return /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+        date >= todayISO;
     })
   );
 }
 
 /**
  * Obtiene las fechas que se van a revisar.
+ * Los días se calculan utilizando el calendario de España.
  */
 export function getUpcomingBookableDates(): string[] {
   const dates: string[] = [];
 
-  for (let i = 0; i < availableDays; i++) {
-    const date = new Date();
+  const todayISO = getTodayInMadrid();
 
-    date.setUTCHours(0, 0, 0, 0);
+  // Utilizamos UTC únicamente para sumar días de calendario.
+  // Así evitamos problemas con los cambios de hora de España.
+  const today = new Date(`${todayISO}T00:00:00Z`);
+
+  for (let i = 0; i < availableDays; i++) {
+    const date = new Date(today);
+
     date.setUTCDate(date.getUTCDate() + i);
 
+    const dateISO = date.toISOString().split('T')[0];
     const weekDay = WEEK_DAY_NAMES[date.getUTCDay()];
 
     if (reservationsPreferences[weekDay]) {
-      dates.push(date.toISOString().split('T')[0]);
+      dates.push(dateISO);
     }
   }
 
@@ -109,17 +175,20 @@ export function getUpcomingBookableDates(): string[] {
 }
 
 /**
- * Comprueba cada reserva configurada, no solamente cada día.
- * Si una clase todavía no está disponible, el proceso podrá reintentarlo.
+ * Comprueba si todas las reservas configuradas
+ * están gestionadas definitivamente.
  */
 export function allDatesCovered(
   state: BookingState,
   dates: string[]
 ): boolean {
-  if (dates.length === 0) return false;
+  if (dates.length === 0) {
+    return false;
+  }
 
   for (const dateString of dates) {
     const date = new Date(`${dateString}T00:00:00Z`);
+
     const weekDay = WEEK_DAY_NAMES[date.getUTCDay()];
 
     const preferences = parsePreferenceValues(
@@ -143,22 +212,35 @@ export function allDatesCovered(
 }
 
 /**
- * Traduce el resultado de la reserva a un estado permanente.
+ * Traduce el resultado de una reserva a un estado permanente.
  */
 export function terminalStatusFromResult(
   result: ReservationResult
 ): TerminalBookingStatus | null {
   const { state, success } = result;
 
-  if (state === 'Borrar') return 'booked';
-  if (state === 'Finalizada') return 'finished';
-  if (state === 'Cambiar') return 'different-time';
+  if (state === 'Borrar') {
+    return 'booked';
+  }
 
-  if (state === 'Entrenar' && success) return 'booked';
-  if (state === 'Avisar' && success) return 'waitlisted';
+  if (state === 'Finalizada') {
+    return 'finished';
+  }
 
-  // Si no se encuentra la clase o no está disponible,
-  // no se guarda como estado definitivo. Se podrá reintentar.
+  if (state === 'Cambiar') {
+    return 'different-time';
+  }
+
+  if (state === 'Entrenar' && success) {
+    return 'booked';
+  }
+
+  if (state === 'Avisar' && success) {
+    return 'waitlisted';
+  }
+
+  // Las clases no encontradas o no disponibles
+  // podrán volver a intentarse en la siguiente ejecución.
   return null;
 }
 
@@ -175,7 +257,9 @@ export function updateState(
   const next = pruneOldDates(current);
 
   for (const { date, result } of dayResults) {
-    if (!date || !result.time || !result.className) continue;
+    if (!date || !result.time || !result.className) {
+      continue;
+    }
 
     const key = createBookingKey(
       date,
