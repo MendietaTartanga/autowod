@@ -1,28 +1,25 @@
+
 name: Daily Reservation
+
 run-name: "🏋️ AutoWOD – ${{ github.event_name == 'workflow_dispatch' && 'Manual run' || 'Sunday booking' }}"
 
 on:
   schedule:
-    # Domingo a las 00:00 UTC.
-    # El proceso esperará hasta las 09:00 en Europe/Madrid.
-    - cron: '0 0 * * 0'
+    # Inicio anticipado para esperar hasta las 09:00 en España.
+    - cron: '0 6 * * 0'
 
   workflow_dispatch:
-    inputs:
-      available_days:
-        description: 'Days to book ahead (leave empty to use AVAILABLE_DAYS)'
-        required: false
-        default: ''
 
+# Evita que dos ejecuciones puedan solaparse.
 concurrency:
-  group: reservation-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'scheduled' }}
+  group: reservation
   cancel-in-progress: false
 
 jobs:
   book-session:
     name: Book Workout Sessions
     runs-on: ubuntu-latest
-    timeout-minutes: 420
+    timeout-minutes: 360
 
     steps:
       - name: 📥 Get latest code
@@ -39,9 +36,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          MAX_WAIT_SECONDS=$((12 * 3600))
-          LATE_GRACE_SECONDS=$((15 * 60))
-
           frequency="$(echo "$BOOKING_FREQUENCY" | tr '[:upper:]' '[:lower:]' | xargs)"
           target_day="$(echo "$BOOKING_WEEKDAY" | tr '[:upper:]' '[:lower:]' | xargs)"
           booking_time="$(echo "$BOOKING_TIME" | xargs)"
@@ -53,21 +47,18 @@ jobs:
 
           today_in_madrid="$(TZ="$TZ_NAME" date +%F)"
           target_epoch="$(TZ="$TZ_NAME" date -d "$today_in_madrid $booking_time" +%s)"
-          wait_seconds=$((target_epoch - $(date +%s)))
+          now_epoch="$(date +%s)"
 
+          wait_seconds=$((target_epoch - now_epoch))
           wait_until=""
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            late_note="Manual execution: booking immediately."
-          elif [ "$wait_seconds" -gt "$MAX_WAIT_SECONDS" ]; then
-            late_note="⚠️ The booking time has passed or GitHub started the workflow too late. Booking immediately."
+            late_note="Manual execution: read-only test starts immediately."
           elif [ "$wait_seconds" -gt 0 ]; then
             wait_until="$target_epoch"
-            late_note="Will book at $booking_time (Europe/Madrid)."
-          elif [ "$wait_seconds" -ge "-$LATE_GRACE_SECONDS" ]; then
-            late_note="Booking window is open. Booking now."
+            late_note="Waiting until $booking_time (Europe/Madrid)."
           else
-            late_note="⚠️ Workflow started late. Booking immediately."
+            late_note="Booking time reached or passed. Starting now."
           fi
 
           if [ -n "$wait_until" ]; then
@@ -78,13 +69,13 @@ jobs:
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual execution requested." >> "$GITHUB_STEP_SUMMARY"
+            echo "Manual read-only execution requested." >> "$GITHUB_STEP_SUMMARY"
           elif [ "$frequency" = "weekly" ] && [ "$today" != "$target_day" ]; then
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             echo "Today is $today, not $target_day. Skipping." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "AutoWOD will run on $today at $booking_time (Europe/Madrid)." >> "$GITHUB_STEP_SUMMARY"
+            echo "AutoWOD scheduled for Sunday at $booking_time (Europe/Madrid)." >> "$GITHUB_STEP_SUMMARY"
             echo "$late_note" >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -132,16 +123,6 @@ jobs:
         if: steps.schedule-gate.outputs.should_run == 'true'
         run: pnpm exec puppeteer browsers install chrome
 
-      - name: 📋 Restore booking state
-        if: steps.schedule-gate.outputs.should_run == 'true'
-        id: booking-state-restore
-        uses: actions/cache/restore@v5
-        with:
-          path: booking-state.json
-          key: booking-state-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            booking-state-${{ runner.os }}-
-
       - name: ⏳ Wait until 09:00
         if: ${{ steps.schedule-gate.outputs.should_run == 'true' && steps.schedule-gate.outputs.wait_until != '' }}
         env:
@@ -162,7 +143,7 @@ jobs:
           sleep "$remaining"
 
           echo "Current time: $(TZ="$TZ_NAME" date '+%F %T %Z')"
-          
+
       - name: 🧪 Ejecutar prueba de lectura (sin reservar)
         if: steps.schedule-gate.outputs.should_run == 'true'
         env:
@@ -181,10 +162,3 @@ jobs:
           DRY_RUN: 'true'
 
         run: pnpm start
-
-      - name: 💾 Save booking state
-        if: ${{ always() && steps.schedule-gate.outputs.should_run == 'true' }}
-        uses: actions/cache/save@v5
-        with:
-          path: booking-state.json
-          key: booking-state-${{ runner.os }}-${{ github.run_id }}
