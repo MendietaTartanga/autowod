@@ -126,6 +126,31 @@ export async function login(
     throw new Error('WodBuster ha solicitado una verificación CAPTCHA. El proceso se detiene y requiere intervención manual.');
   }
 
+  // WodBuster muestra una pantalla intermedia para decidir si recuerda el dispositivo.
+  // El botón submit observado en esa pantalla completa el acceso.
+  if (diagnostics.pageText.toLowerCase().includes('recordar este dispositivo')) {
+    const completeLoginSelector = '#body_body_CtlLoginComplete';
+    await page.waitForSelector(completeLoginSelector, { visible: true, timeout: 10000 });
+    console.log('Confirmando la pantalla intermedia de acceso...');
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null),
+      page.click(completeLoginSelector),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
+  const finalLoginCheck = await page.evaluate(() => ({
+    url: window.location.href,
+    title: document.title,
+    text: (document.body?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 700),
+  }));
+
+  console.log('Comprobación final del acceso:', JSON.stringify(finalLoginCheck));
+
+  if (/\\/account\\/login\\.aspx/i.test(new URL(finalLoginCheck.url).pathname)) {
+    throw new Error('WodBuster sigue mostrando el inicio de sesión después de confirmar el dispositivo. No se accederá al calendario.');
+  }
+
   console.log('Resultado del envío del formulario (sin credenciales):', JSON.stringify({
     url: diagnostics.url,
     title: diagnostics.title,
