@@ -101,6 +101,18 @@ export async function login(
         ? Array.from(form.querySelectorAll('input[type="hidden"]')).map((input) => (input as HTMLInputElement).name).slice(0, 20)
         : [],
       pageText: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 900),
+      actions: Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a'))
+        .map((element) => ({
+          tag: element.tagName,
+          id: (element as HTMLElement).id,
+          name: element.getAttribute('name'),
+          text: (element.textContent ?? (element as HTMLInputElement).value ?? '').trim(),
+          href: (element as HTMLAnchorElement).href || null,
+          type: element.getAttribute('type'),
+          classes: (element as HTMLElement).className?.toString?.() ?? '',
+        }))
+        .filter((element) => element.text || element.id || element.name)
+        .slice(0, 30),
       captcha,
       messages,
     };
