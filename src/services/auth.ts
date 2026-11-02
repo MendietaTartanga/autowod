@@ -142,12 +142,12 @@ export async function login(
   const finalLoginCheck = await page.evaluate(() => ({
     url: window.location.href,
     title: document.title,
-    text: (document.body?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 700),
+    text: (document.body?.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 700),
   }));
 
   console.log('Comprobación final del acceso:', JSON.stringify(finalLoginCheck));
 
-  if (/\\/account\\/login\\.aspx/i.test(new URL(finalLoginCheck.url).pathname)) {
+  if (new URL(finalLoginCheck.url).pathname.toLowerCase().includes('/account/login.aspx')) {
     throw new Error('WodBuster sigue mostrando el inicio de sesión después de confirmar el dispositivo. No se accederá al calendario.');
   }
 
