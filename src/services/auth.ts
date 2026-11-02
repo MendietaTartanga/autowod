@@ -133,6 +133,7 @@ export async function login(
     emailFilled: diagnostics.emailFilled,
     passwordFilled: diagnostics.passwordFilled,
     pageText: diagnostics.pageText,
+    actions: diagnostics.actions,
     captcha: diagnostics.captcha,
     mensajes: diagnostics.messages,
   }));
