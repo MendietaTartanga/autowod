@@ -26,6 +26,7 @@ function normalizeText(value: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\s*\+\s*/g, '+')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -184,14 +185,22 @@ async function findActionButton(
 ): Promise<{
   button: ElementHandle<Element>;
   state: ButtonText;
+  label: string;
 } | null> {
-  const buttons = await row.$$('.actionsjs button');
+  const buttons = await row.$('.actionsjs button');
 
   for (const button of buttons) {
-    const state = await getReservationState(button);
+    const label = await button.evaluate(
+      el => (el.textContent ?? '').replace(/\\s+/g, ' ').trim()
+    );
+
+    // WodBuster muestra la lista de espera como "Avisar" o "Avisar (5)".
+    // El número indica cuántas personas hay esperando, no forma parte del estado.
+    const isWaitlistButton = /^Avisar(?:\\s*\\(\\d+\\))?$/i.test(label);
+    const state = isWaitlistButton ? 'Avisar' : await getReservationState(button);
 
     if (state) {
-      return { button, state };
+      return { button, state, label };
     }
   }
 
@@ -246,7 +255,7 @@ export async function inspectReservation(
   if (!action) {
     return {
       success: false,
-      message: `CLASE ENCONTRADA, pero sin botón reconocido: ${className} a las ${time}.`,
+      message: `CLASE ENCONTRADA, pero sin botón de acción reconocido: ${className} a las ${time}.`,
       weekDay,
       date,
       time,
@@ -257,7 +266,11 @@ export async function inspectReservation(
 
   return {
     success: action.state === 'Borrar',
-    message: `ENCONTRADA: ${className} a las ${time}. Estado del botón: ${action.state}. No se ha realizado ninguna acción.`,
+    message: action.state === 'Avisar'
+      ? `CLASE COMPLETA: ${className} a las ${time}. Lista de espera disponible (${action.label}). No se ha realizado ninguna acción.`
+      : action.state === 'Finalizada'
+        ? `FINALIZADA: ${className} a las ${time}. No se ha realizado ninguna acción.`
+        : `ENCONTRADA: ${className} a las ${time}. Estado del botón: ${action.label}. No se ha realizado ninguna acción.`,
     weekDay,
     date,
     time,
