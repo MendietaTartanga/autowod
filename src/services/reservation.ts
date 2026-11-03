@@ -241,7 +241,7 @@ export async function inspectReservation(
   const row = await findReservationRow(page, time, className);
 
   if (!row) {
-    const sameTimeRows = await page.$eval('.rowClase', (elements, targetTime) =>
+    const sameTimeRows = await page.$$eval('.rowClase', (elements, targetTime) =>
       elements
         .map(element => ({
           time: element.querySelector('.entrenamientoHead .hora')?.textContent?.trim() ?? '',
