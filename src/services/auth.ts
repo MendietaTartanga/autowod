@@ -126,44 +126,41 @@ export async function login(
     throw new Error('WodBuster ha solicitado una verificación CAPTCHA. El proceso se detiene y requiere intervención manual.');
   }
 
-  // WodBuster muestra una pantalla intermedia para decidir si recuerda el dispositivo.
-  // El botón submit observado en esa pantalla completa el acceso.
+  // WodBuster solicita elegir si debe recordar este dispositivo.
+  // En GitHub Actions usamos "No recordar": el runner es efímero y no debe quedar como dispositivo de confianza.
   if (diagnostics.pageText.toLowerCase().includes('recordar este dispositivo')) {
-    // El control observado en WodBuster es un input submit; el atributo name
-    // es más estable que el id generado por ASP.NET.
-    const completeLoginSelector = 'input[type="submit"][name="ctl00$ctl00$body$body$CtlLoginComplete"]';
-    await page.waitForSelector(completeLoginSelector, { timeout: 20000 });
-    const completeButtonInfo = await page.$eval(completeLoginSelector, (element) => {
+    const noRememberSelector = '#body_body_CtlConfiar_CtlNoSeguro';
+
+    await page.waitForSelector(noRememberSelector, { timeout: 15000 });
+    const radioInfo = await page.$eval(noRememberSelector, (element) => {
       const input = element as HTMLInputElement;
-      const rect = input.getBoundingClientRect();
       return {
-        tag: input.tagName,
+        exists: true,
         type: input.type,
-        value: input.value,
         disabled: input.disabled,
-        visible: rect.width > 0 && rect.height > 0 &&
-          window.getComputedStyle(input).visibility !== 'hidden',
-        formAction: input.form?.action ?? null,
-        outerHTML: input.outerHTML,
-        parentHTML: input.parentElement?.outerHTML.slice(0, 2500) ?? null,
-        formHTML: input.form?.outerHTML.slice(0, 5000) ?? null,
+        checked: input.checked,
       };
-    }).catch(() => null);
+    });
 
-    if (!completeButtonInfo) {
-      throw new Error('No se encuentra el control de confirmación del dispositivo.');
-    }
+    console.log('Opción "No recordar" detectada:', JSON.stringify(radioInfo));
+    console.log('Seleccionando "No recordar" para continuar el acceso...');
 
-    console.log('Control de confirmación detectado:', JSON.stringify(completeButtonInfo));
-    console.log('Confirmando la pantalla intermedia de acceso...');
+    await page.$eval(noRememberSelector, (element) => {
+      (element as HTMLInputElement).click();
+    });
 
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null),
-      page.$eval(completeLoginSelector, (element) => {
-        (element as HTMLInputElement).click();
-      }),
-    ]);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // La selección dispara un __doPostBack de ASP.NET (normalmente AJAX parcial),
+    // no un submit del botón oculto ni necesariamente una navegación completa.
+    await page.waitForFunction(
+      () => !(document.body?.innerText ?? '').toLowerCase().includes('recordar este dispositivo'),
+      { timeout: 30000 }
+    ).catch(async () => {
+      const state = await page.evaluate(() => ({
+        url: window.location.href,
+        text: (document.body?.innerText ?? '').replace(/\\s+/g, ' ').trim().slice(0, 500),
+      }));
+      throw new Error(`WodBuster no completó la selección "No recordar": ${JSON.stringify(state)}`);
+    });
   }
 
   const finalLoginCheck = await page.evaluate(() => ({
