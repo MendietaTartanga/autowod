@@ -187,7 +187,7 @@ async function findActionButton(
   state: ButtonText;
   label: string;
 } | null> {
-  const buttons = await row.$('.actionsjs button');
+  const buttons = await row.$(' .actionsjs button'.trim());
 
   for (const button of buttons) {
     const label = await button.evaluate(
