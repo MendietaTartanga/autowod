@@ -129,12 +129,18 @@ export async function login(
   // WodBuster muestra una pantalla intermedia para decidir si recuerda el dispositivo.
   // El botón submit observado en esa pantalla completa el acceso.
   if (diagnostics.pageText.toLowerCase().includes('recordar este dispositivo')) {
-    const completeLoginSelector = '#body_body_CtlLoginComplete';
-    await page.waitForSelector(completeLoginSelector, { visible: true, timeout: 10000 });
+    // El control observado en WodBuster es un input submit; el atributo name
+    // es más estable que el id generado por ASP.NET.
+    const completeLoginSelector = 'input[type="submit"][name="ctl00$ctl00$body$body$CtlLoginComplete"]';
+    await page.waitForSelector(completeLoginSelector, { timeout: 20000 });
+    const completeButton = await page.$(completeLoginSelector);
+    if (!completeButton) {
+      throw new Error('No se encuentra el botón para confirmar el dispositivo.');
+    }
     console.log('Confirmando la pantalla intermedia de acceso...');
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null),
-      page.click(completeLoginSelector),
+      completeButton.click(),
     ]);
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
