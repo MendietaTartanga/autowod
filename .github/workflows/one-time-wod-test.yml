@@ -1,0 +1,75 @@
+name: One-time WOD reservation test
+
+on:
+  schedule:
+    # 10:00 UTC = 11:00 Europe/Madrid on 3 November 2026.
+    - cron: '0 10 3 11 *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-wod-test-2026-11-03
+  cancel-in-progress: false
+
+jobs:
+  reserve-one-wod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check one-time date
+        id: date-gate
+        run: |
+          set -euo pipefail
+          local_date="$(TZ=Europe/Madrid date +%F)"
+          local_time="$(TZ=Europe/Madrid date +%H:%M)"
+          echo "Hora local: $local_date $local_time"
+          if [ "$local_date" != "2026-11-03" ]; then
+            echo "Esta ejecución no corresponde al día autorizado. Se cancela."
+            exit 0
+          fi
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.date-gate.outputs.authorized == 'true'
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        if: steps.date-gate.outputs.authorized == 'true'
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node.js
+        if: steps.date-gate.outputs.authorized == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        if: steps.date-gate.outputs.authorized == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        if: steps.date-gate.outputs.authorized == 'true'
+        run: pnpm typecheck
+
+      - name: Install Chrome
+        if: steps.date-gate.outputs.authorized == 'true'
+        run: pnpm exec puppeteer browsers install chrome
+
+      - name: Reserve only Friday 6 November at 14:30 (WOD)
+        if: steps.date-gate.outputs.authorized == 'true'
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          MONDAY: ''
+          TUESDAY: ''
+          WEDNESDAY: ''
+          THURSDAY: ''
+          FRIDAY: '14:30|WOD'
+          SATURDAY: ''
+          SUNDAY: ''
+          AVAILABLE_DAYS: '5'
+          DRY_RUN: 'false'
+          ALLOW_WAITLIST: 'false'
+          SKIP_STATE_GUARD: 'true'
+        run: pnpm start
