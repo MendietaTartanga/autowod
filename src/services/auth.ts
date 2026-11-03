@@ -144,6 +144,9 @@ export async function login(
         visible: rect.width > 0 && rect.height > 0 &&
           window.getComputedStyle(input).visibility !== 'hidden',
         formAction: input.form?.action ?? null,
+        outerHTML: input.outerHTML,
+        parentHTML: input.parentElement?.outerHTML.slice(0, 2500) ?? null,
+        formHTML: input.form?.outerHTML.slice(0, 5000) ?? null,
       };
     }).catch(() => null);
 
