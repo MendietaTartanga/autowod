@@ -133,14 +133,32 @@ export async function login(
     // es más estable que el id generado por ASP.NET.
     const completeLoginSelector = 'input[type="submit"][name="ctl00$ctl00$body$body$CtlLoginComplete"]';
     await page.waitForSelector(completeLoginSelector, { timeout: 20000 });
-    const completeButton = await page.$(completeLoginSelector);
-    if (!completeButton) {
-      throw new Error('No se encuentra el botón para confirmar el dispositivo.');
+    const completeButtonInfo = await page.$eval(completeLoginSelector, (element) => {
+      const input = element as HTMLInputElement;
+      const rect = input.getBoundingClientRect();
+      return {
+        tag: input.tagName,
+        type: input.type,
+        value: input.value,
+        disabled: input.disabled,
+        visible: rect.width > 0 && rect.height > 0 &&
+          window.getComputedStyle(input).visibility !== 'hidden',
+        formAction: input.form?.action ?? null,
+      };
+    }).catch(() => null);
+
+    if (!completeButtonInfo) {
+      throw new Error('No se encuentra el control de confirmación del dispositivo.');
     }
+
+    console.log('Control de confirmación detectado:', JSON.stringify(completeButtonInfo));
     console.log('Confirmando la pantalla intermedia de acceso...');
+
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null),
-      completeButton.click(),
+      page.$eval(completeLoginSelector, (element) => {
+        (element as HTMLInputElement).click();
+      }),
     ]);
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
