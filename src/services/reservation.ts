@@ -26,6 +26,8 @@ function normalizeText(value: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    // WodBuster puede mostrar "Mobilidad" donde la configuración dice "Movilidad".
+    .replace(/b/g, 'v')
     .replace(/\s*\+\s*/g, '+')
     .replace(/\s+/g, ' ')
     .trim();
@@ -239,9 +241,25 @@ export async function inspectReservation(
   const row = await findReservationRow(page, time, className);
 
   if (!row) {
+    const sameTimeRows = await page.$eval('.rowClase', (elements, targetTime) =>
+      elements
+        .map(element => ({
+          time: element.querySelector('.entrenamientoHead .hora')?.textContent?.trim() ?? '',
+          name: element.querySelector('.entrenamientoHead .entrenamiento')?.textContent?.trim() ?? '',
+          actions: Array.from(element.querySelectorAll('.actionsjs button'))
+            .map(button => (button.textContent ?? '').replace(/\\s+/g, ' ').trim()),
+        }))
+        .filter(item => item.time === targetTime),
+      time
+    );
+    console.log(
+      `Diagnóstico de clases a las ${time} el ${date}:`,
+      JSON.stringify(sameTimeRows)
+    );
+
     return {
       success: false,
-      message: `NO ENCONTRADA: ${className} a las ${time} el ${date}.`,
+      message: `NO ENCONTRADA: ${className} a las ${time} el ${date}. Se han registrado las actividades visibles de esa hora para diagnóstico.`,
       weekDay,
       date,
       time,
