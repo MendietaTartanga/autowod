@@ -67,7 +67,11 @@ async function main(): Promise<void> {
 
   // En modo real, evitamos repetir reservas que ya están gestionadas.
   // En modo prueba, siempre permitimos consultar el calendario.
-  if (!dryRun && allDatesCovered(state, upcomingDates)) {
+  if (
+    !dryRun &&
+    process.env.SKIP_STATE_GUARD !== 'true' &&
+    allDatesCovered(state, upcomingDates)
+  ) {
     console.log(
       'Todas las reservas configuradas ya están gestionadas. No es necesario repetir el proceso.'
     );
