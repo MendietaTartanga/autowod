@@ -271,6 +271,20 @@ export async function inspectReservation(
   const action = await findActionButton(row);
 
   if (!action) {
+    const rowText = await row.evaluate((el: Element) => el.textContent ?? '');
+    if (rowText.toLowerCase().includes('finalizada')) {
+      return {
+        success: true,
+        message: `FINALIZADA: ${className} a las ${time}. No se requiere ninguna acción.`,
+        weekDay,
+        date,
+        time,
+        className,
+        preferenceKey,
+        state: 'Finalizada',
+      };
+    }
+
     return {
       success: false,
       message: `CLASE ENCONTRADA, pero sin botón de acción reconocido: ${className} a las ${time}.`,
