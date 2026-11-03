@@ -383,6 +383,11 @@ export async function makeReservation(
     }
 
     case 'Avisar': {
+      if (process.env.ALLOW_WAITLIST === 'false') {
+        result.message = `La clase ${className} a las ${time} está completa. No se ha solicitado lista de espera.`;
+        break;
+      }
+
       await action.button.click();
 
       const newState = await verifyReservation(
