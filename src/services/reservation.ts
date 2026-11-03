@@ -191,12 +191,12 @@ async function findActionButton(
 
   for (const button of buttons) {
     const label = await button.evaluate(
-      el => (el.textContent ?? '').replace(/\\s+/g, ' ').trim()
+      (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
     );
 
     // WodBuster muestra la lista de espera como "Avisar" o "Avisar (5)".
     // El número indica cuántas personas hay esperando, no forma parte del estado.
-    const isWaitlistButton = /^Avisar(?:\\s*\\(\\d+\\))?$/i.test(label);
+    const isWaitlistButton = /^Avisar(?:\s*\(\d+\))?$/i.test(label);
     const state = isWaitlistButton ? 'Avisar' : await getReservationState(button);
 
     if (state) {
